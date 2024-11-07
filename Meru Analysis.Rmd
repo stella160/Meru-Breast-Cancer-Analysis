@@ -1,0 +1,115 @@
+---
+title: "Meru Breast Cancer Analysis"
+author: "Stellamarries Syombua"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+# Loading necessary packages
+library(dplyr)
+library(mice)
+library(ggplot2)
+library(gtsummary)
+library(DataExplorer)
+library(knitr)
+library(mice)
+library(summarytools)
+```
+
+```{r}
+# Load the data
+breast_data<- read.csv("C:\\Users\\ADMIN\\Documents\\initial_visit 2.csv")
+head(breast_data)
+```
+
+
+```{r}
+# Categorize AGE
+data_breast1 <- breast_data %>%
+  mutate(AgeGroup_Cat = case_when(
+    AGE >= 17 & AGE <= 39 ~ "17-39",
+    AGE >= 40 & AGE <= 60 ~ "40-60",
+    AGE >= 61 ~ "61 and above"
+  ))
+```
+
+```{r}
+# Categorize BMI
+data_breast2 <- data_breast1 %>%
+  mutate(BMI_Cat = case_when(
+   BMI..Kg.m.2 < 18.5 ~ "Underweight",
+   BMI..Kg.m.2 >= 18.5 & BMI..Kg.m.2 <= 24.9 ~ "Normal weight",
+    BMI..Kg.m.2 >= 25 & BMI..Kg.m.2 <= 29.9 ~ "Overweight",
+   BMI..Kg.m.2 >= 30 & BMI..Kg.m.2 <= 34.9 ~ "Obesity Class 1",
+    TRUE ~ "Obesity Class 2 and above"
+  ))
+
+```
+
+```{r}
+# Categorize Ki67 if the column exists
+if("Ki67" %in% names(breast_data)) {
+  data_breast <- data_breast2 %>%
+    mutate(Ki67_Cat = case_when(
+      Ki67 <= 15 ~ "Low level",
+      Ki67 >= 16 & Ki67 <= 30 ~ "Medium level",
+      Ki67 > 30 ~ "High level"
+    ))
+}
+
+# View the first few rows of data
+#View(data_breast)
+
+```
+
+```{r}
+# Removing duplicates 
+clean_data1 <- data_breast %>%
+  mutate(Occupation = ifelse(Occupation %in% c('student', 'Student'), 'Student', Occupation),
+         Occupation = ifelse(Occupation %in% c('Unemployed', 'unemployed'), 'Unemployed', Occupation))
+
+clean_data<- clean_data1 %>%
+  mutate(Surgicalprocedure = ifelse(Surgicalprocedure %in% c('MRMandALND', 'MRMandALND', 'MRM+ALND', 'MRMMandALND'), 'MRMandALND' , Surgicalprocedure))
+```
+
+```{r}
+# Checking for the percentage of missingness in demographic variables
+# List the variables of interest 
+demo_list<- c("AGE", "Gender", "Religion", "Occupation", "Marital.Status")
+m1<- clean_data %>% dplyr:: select(all_of(demo_list))
+m1_plot <- plot_missing(m1, title = "Missingness in demographic variables")
+```
+
+```{r}
+# Checking for missingness in Clinical variables
+clinic_list<- c("Cancertype", "ER", "PR", "Ki67", "HER2", "Subtype", "HIVstatus", "Treatmentplan", "TreatmentIntent", "TreatmentIntent")
+m2 <- clean_data %>% dplyr::select(all_of(clinic_list))
+m2_plot<- plot_missing(m2, title = "Missingness in clinical variables")
+```
+
+```{r}
+# Creating a barchart of the subtypes
+ggplot(data = clean_data, aes(x = Subtype)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Distribution of Cancer Subtypes",
+       x = "Cancer Subtype",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+# Relationship between Age and Cancer Subtype
+age_subtype_summary <- clean_data %>%
+  group_by(Subtype) %>%
+  summarize(Age_Mean = mean(AGE, na.rm = TRUE), Age_SD = sd(AGE, na.rm = TRUE))
+print(kable(age_subtype_summary, caption = "Age by Cancer Subtype"))
+
+ggplot(clean_data, aes(x = Subtype, y = AGE, fill = Subtype)) +
+  geom_boxplot() +
+  labs(title = "Age Distribution by Cancer Subtype", x = "Cancer Subtype", y = "Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```

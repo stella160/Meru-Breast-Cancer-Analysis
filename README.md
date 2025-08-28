@@ -4,6 +4,7 @@
 This repository contains data analysis, visualizations, and summary tables from a hospital-based study on **breast cancer subtypes in Meru County, Kenya**.  
 
 Breast cancer is an increasing public health concern in Meru. Hospital registries and pathology reports were reviewed to explore **sociodemographic patterns, risk factors, and associations with intrinsic breast cancer subtypes (Luminal A, Luminal B, HER2-enriched, and Basal-like)**.  
+<img width="2400" height="1800" alt="Age_by_CancerSubtype" src="https://github.com/user-attachments/assets/2b454642-53f6-4efb-b9cb-b5ced6f7f607" />
 
 ---
 

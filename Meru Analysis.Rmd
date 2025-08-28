@@ -1,115 +1,1032 @@
 ---
-title: "Meru Breast Cancer Analysis"
+title: "Intrinsic factor"
 author: "Stellamarries Syombua"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
 ---
 
+
 ```{r}
+rm(list = ls())
+gc()
+
+
+```
+
+
+```{r import_libraries, echo = FALSE , include = FALSE, warning=FALSE}
+# Import libraries
+
 # Loading necessary packages
+#install.packages("cardx")
+#install.packages("officedown")
+library(officer)   # For landscapping the word document
+library(officedown)
 library(dplyr)
-library(mice)
+library(mice)  # missingness by imputation
 library(ggplot2)
 library(gtsummary)
-library(DataExplorer)
+library(DataExplorer) # EDA simplification
 library(knitr)
-library(mice)
+library(patchwork)
 library(summarytools)
+library(forcats)
+library(gt)
+library(gtsummary)
+library(nnet)
+library(flextable)
+library(stringr)
+library(tidyr)
+library(tidytext)
+library(rio)
 ```
 
-```{r}
-# Load the data
-breast_data<- read.csv("C:\\Users\\ADMIN\\Documents\\initial_visit 2.csv")
-head(breast_data)
+
+
+```{r import_data, echo = FALSE , include = FALSE, warning=FALSE}
+# Data Importation** 
+
+# Load the dataset
+data <- read.csv("initial_visit 2.csv")
+# data <- read.csv("C:\\Users\\ADMIN\\Desktop\\Excel Script\\initial_visit 2.csv")
+#data <- read.csv("C:\\Users\\ADMIN\\Yemaachi Biotech Dropbox\\Stella marries\\Kenya Studies\\initial_visit 2.csv")
+
+# Checking for the structure of the dataset
+str(data)
+head(data)
+dim(data)
+
 ```
 
 
-```{r}
-# Categorize AGE
-data_breast1 <- breast_data %>%
-  mutate(AgeGroup_Cat = case_when(
-    AGE >= 17 & AGE <= 39 ~ "17-39",
-    AGE >= 40 & AGE <= 60 ~ "40-60",
-    AGE >= 61 ~ "61 and above"
+# Data cleaning
+## Handling Missing Data
+```{r data_cleaning, echo = FALSE , include = TRUE, warning=FALSE}
+# 1. Data Cleaning
+
+# 2.1 Missing Data
+
+# Categorize the variables (demographic and clinical variables)
+
+demographic_vars <- c("AGE", "Gender", "Religion", "Occupation", "Marital.Status")
+clinic_vars <- c("Cancertype", "ER", "PR", "Ki67", "HER2", "Subtype", 
+                 "HIVstatus", "Treatmentplan", "TreatmentIntent")
+
+m1 <- data %>% dplyr::select(all_of(demographic_vars))
+m2 <- data %>% dplyr::select(all_of(clinic_vars))
+
+#Percentages of missing values per column
+missing_percent <- sapply(data, function(x) sum(is.na(x)) / length(x) * 100)
+missing_freq <- sapply(data, function(x) sum(is.na(x)))
+
+# Data frame to view percentage of missingness in each variable
+missing_df <- data.frame(
+  Variable = names(missing_percent),
+  Missing_Frequency = missing_freq,
+  Missing_Percentage = round(missing_percent, 2)
+)
+
+# Print the table for the percentage of missingness
+flextable(missing_df)
+
+# Use DataExplorerer() to plot the missing data
+
+m1_plot <- plot_missing(m1, title = "Missingness in Demographic Variables") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10))
+
+m2_plot <- plot_missing(m2, title = "Missingness in Clinical Variables") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10))
+
+```
+
+## Standardizing Categories
+### Occupation and Surgical Procedure
+```{r occup_cleaning , echo = FALSE , include = TRUE, warning=FALSE}
+# Standardize Occupation and Surgicalprocedure
+clean_data <- data %>%
+  mutate(
+    Occupation = case_when(
+      Occupation %in% c("student", "Student") ~ "Student",
+      Occupation %in% c("unemployed", "Unemployed", "Housewife") ~ "Unemployed",
+      TRUE ~ Occupation
+    ),
+    Surgicalprocedure = case_when(
+      Surgicalprocedure %in% c("MRMAndALND", "MRM+ALND", "MRMMandALND") ~ "MRMandALND",
+      TRUE ~ Surgicalprocedure
+    )
+  )
+
+# Check for changes
+cbind(table(clean_data$Occupation, useNA = "ifany"))
+cbind(table(clean_data$Surgicalprocedure, useNA = "ifany"))
+```
+
+
+
+### Age and BMI Categories
+```{r age_bmi_category, echo = FALSE , include = TRUE, warning=FALSE}
+# Categorizing Age
+clean_data <- clean_data %>%
+  mutate(
+    age_cat = case_when(
+      AGE >= 17 & AGE <= 39 ~ "17-39",
+      AGE >= 40 & AGE <= 60 ~ "40-60",
+      AGE >= 61 ~ ">60",
+      TRUE ~ NA_character_
+    ),
+    # Categorize BMI
+    BMI_cat = case_when(
+      BMI..Kg.m.2 < 18.5 ~ "Underweight",
+      BMI..Kg.m.2 >= 18.5 & BMI..Kg.m.2 <= 24.9 ~ "Normal weight",
+      BMI..Kg.m.2 >= 25 & BMI..Kg.m.2 <= 29.9 ~ "Overweight",
+      # BMI..Kg.m.2 >= 30 & BMI..Kg.m.2 <= 34.9 ~ "Obesity Class 1",    
+      BMI..Kg.m.2 >= 29.9 ~ "Obese",
+      TRUE ~ NA_character_
+    )
+  )
+
+
+# Set the age and BMI variables as factor variable
+clean_data$age_cat <- 
+  factor(clean_data$age_cat,
+         levels = c("17-39", "40-60", ">60"),
+         labels = c("17-39", "40-60", ">60"))
+
+clean_data$BMI_cat <- 
+  factor(clean_data$BMI_cat,
+         levels = c("Underweight", "Normal weight", "Overweight", "Obese"),
+         labels = c("Underweight", "Normal weight", "Overweight", "Obese"))
+
+# Check for new categories
+#cbind(table(clean_data$AGE, useNA = "ifany"))
+cbind(table(clean_data$age_cat, useNA = "ifany"))
+
+#cbind(table(clean_data$BMI..Kg.m.2, useNA = "ifany"))
+cbind(table(clean_data$BMI_cat, useNA = "ifany"))
+
+```
+
+### Ki67 Categorization
+
+```{r ki67_category, echo = FALSE , include = TRUE, warning=FALSE}
+# Categorize Ki67
+# if("Ki67" %in% names(clean_data)) {
+#   clean_data <- clean_data %>%
+#     mutate(
+#       Ki67_cat = case_when(
+#         Ki67 <= 15 ~ "Low level",
+#         Ki67 >= 16 & Ki67 <= 30 ~ "Medium level",
+#         Ki67 > 30 ~ "High level",
+#         TRUE ~ NA_character_
+#       )
+#     )
+# }
+
+
+# Split 'ki67' into two columns by the "-" symbol and remove the % symbol
+clean_data$Ki67_new <-  gsub("<","", gsub("%","",clean_data$Ki67))
+
+clean_data$Ki67_new_1 <-  as.numeric(sapply(strsplit(clean_data$Ki67_new, "-"), "[", 1))
+clean_data$Ki67_new_2 <-  as.numeric(sapply(strsplit(clean_data$Ki67_new, "-"), "[", 2))
+
+clean_data <- clean_data %>% 
+  # Imputing the scores based on the median
+  mutate(Ki67_score = ifelse(is.na(Ki67_new_1), NA,
+                            ifelse(is.na(Ki67_new_2), Ki67_new_1 ,
+                                    (Ki67_new_1+Ki67_new_2)/2))) %>% 
+  # Generating the categories based on the imputed values
+  mutate(Ki67_cat=case_when(
+    Ki67_score <= 15 ~ "Low level (<16%)",
+    Ki67_score >= 16 & Ki67_score <= 30 ~ "Medium level (16-30%)",
+    Ki67_score > 30 ~ "High level (>30%)",
+    is.na(Ki67_score) ~ NA
   ))
+
+# Set the Ki67 to category
+clean_data$Ki67_cat <- 
+  factor(clean_data$Ki67_cat,
+         levels = c("Low level (<16%)", "Medium level (16-30%)", "High level (>30%)"),
+         labels = c("Low level (<16%)", "Medium level (16-30%)", "High level (>30%)"))
+
+
+# Check for the Ki67 categories
+#cbind(table(clean_data$Ki67, useNA = "ifany"))  
+cbind(table(clean_data$Ki67_cat, useNA = "ifany"))
+cbind(table(clean_data$Ki67_score, useNA = "ifany")) 
+table(clean_data$Ki67_score, clean_data$Ki67_cat, useNA = "ifany")  
 ```
 
-```{r}
-# Categorize BMI
-data_breast2 <- data_breast1 %>%
-  mutate(BMI_Cat = case_when(
-   BMI..Kg.m.2 < 18.5 ~ "Underweight",
-   BMI..Kg.m.2 >= 18.5 & BMI..Kg.m.2 <= 24.9 ~ "Normal weight",
-    BMI..Kg.m.2 >= 25 & BMI..Kg.m.2 <= 29.9 ~ "Overweight",
-   BMI..Kg.m.2 >= 30 & BMI..Kg.m.2 <= 34.9 ~ "Obesity Class 1",
-    TRUE ~ "Obesity Class 2 and above"
-  ))
 
-```
 
-```{r}
-# Categorize Ki67 if the column exists
-if("Ki67" %in% names(breast_data)) {
-  data_breast <- data_breast2 %>%
-    mutate(Ki67_Cat = case_when(
-      Ki67 <= 15 ~ "Low level",
-      Ki67 >= 16 & Ki67 <= 30 ~ "Medium level",
-      Ki67 > 30 ~ "High level"
+### Cancer subtypes Categorization
+```{r cancer_subtype_cleaning,  echo = FALSE , include = TRUE, warning=FALSE, message=FALSE}
+# Categorization of the cancer subtypes
+clean_data$Subtype <- trimws(clean_data$Subtype)
+
+clean_data <- clean_data %>% 
+  mutate(
+    # Sub type by histological classification
+    Subtype_histological = case_when(
+    Subtype %in% 
+      c("Invasive Secretory Carcinoma", 
+        "Invasive Micropapillary Carcinoma",
+        "Mucinous Carcinoma",
+        "Adenocarcinoma") ~ "Invasive carcinoma",
+    Subtype %in% 
+      c("Intraductal Papilloma",
+        "Sclerosedintrallectual Papilloma") ~ "Papillomas",
+    Subtype %in% 
+      c("Metaplastic Carcinoma", "NOS") ~ "Metaplastic and Other Rare Tumors",
+    Subtype %in% 
+      c("Metastatic lymph","Small Lymphocytic Lymphoma") ~
+      "Lymphomas and Lymphoid Lesions"
     ))
+         
+clean_data$Subtype_histological <- 
+  factor(clean_data$Subtype_histological,
+         levels = c("Metaplastic and Other Rare Tumors",
+                    "Invasive carcinoma",
+                    "Lymphomas and Lymphoid Lesions",
+                    "Papillomas"),
+         labels = c("Metaplastic and Other Rare Tumors",
+                    "Invasive carcinoma",
+                    "Lymphomas and Lymphoid Lesions",
+                    "Papillomas"))
+
+#cbind(table(clean_data$Ki67, useNA = "ifany"))  
+cbind(table(clean_data$Subtype, useNA = "ifany"))
+cbind(table(clean_data$Subtype_histological, useNA = "ifany")) 
+table(clean_data$Subtype, clean_data$Subtype_histological, useNA = "ifany")  
+
+```
+
+
+
+## Descriptive Statistics
+```{r data_summary, echo = FALSE , include = TRUE, warning=FALSE, message=FALSE}
+# Descriptive statistics (demographic variables)
+plot.new()
+summary <- dfSummary(clean_data[, c("AGE", "age_cat", "BMI_cat", "Gender", "Religion", "Occupation", "Marital.Status")], plain = TRUE)
+
+
+print(summary, method = "viewer")
+summary
+```
+
+# Visualizations
+
+## Cancer subtype
+```{r cancer_subtype,  echo = FALSE , include = TRUE, warning=FALSE, message=FALSE}
+# Cancer Sub-type Distribution***
+
+# Distribution for cancer subtypes (barchart)
+ggplot(clean_data, aes(x = Subtype)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Distribution of Cancer Subtypes", x = "Cancer Subtype", y = "Number of participants") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+# Distribution for cancer subtypes (barchart)
+ggplot(clean_data, aes(x = Subtype_histological)) +
+  geom_bar(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Distribution of Cancer Subtypes", x = "Cancer Subtype", y = "Number of participants") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+## BMI Distribution Across Age Groups
+
+```{r age_vs_bmi_plot,  echo = FALSE , include = TRUE, warning=FALSE, message=FALSE, fig.height= 4, fig.width = 8}
+# Distribution of BMI categories across age groups
+# ggplot(clean_data, aes(x = age_cat, fill = BMI_cat)) +
+#   geom_bar(position = "fill") +
+#   labs(title = "BMI Categories by Age Group", x = "Age Group", y = "Proportion") +
+#   scale_fill_brewer(palette = "Set3") +
+#   theme_minimal()
+
+
+# Count frequencies of cancer types by age group
+plot_data <- clean_data %>%
+  count(age_cat, BMI_cat) %>%
+  arrange(desc(n))  # Sort from highest to lowest frequency
+
+#Distribution of cancer types by age groups(plot)\
+ggplot(plot_data, aes(x = age_cat, y = n, fill = BMI_cat )) +
+  geom_bar(stat = "identity", position = "dodge") +  # Use identity since we're supplying pre-counted data
+  #coord_flip() +  # Flips the axes for a horizontal bar chart
+  geom_text(aes(label = n), position = position_dodge(width = 0.9), vjust = -0.5) +  # Add frequency labels
+  ylim(0,35) +
+  labs(
+    title = "BMI cateogry by age group",
+    fill = "BMI category",
+    y = "Number of participants",
+    x = "Age group"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 10)  # Customize y-axis text size
+  )
+
+
+```
+
+
+## Age Distribution by Cancer Sub-type
+
+```{r age_by_cancer_subtype1 ,  echo = FALSE , include = TRUE, warning=FALSE, message=FALSE, fig.height= 4, fig.width = 8}
+# Distribution for age by cancer subtype (Boxplot)
+ggplot(clean_data, aes(x = Subtype_histological, y = AGE, fill = Subtype_histological)) +
+  geom_boxplot() +
+  coord_flip() +
+  labs(title = "Age Distribution by Cancer Subtype", x = "Cancer Subtype", y = "Age (in years)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1), legend.position = "none")
+
+
+# Count frequencies of cancer types by age group
+plot_data <- clean_data %>%
+  count(age_cat, Subtype_histological) %>%
+  arrange(desc(n))  # Sort from highest to lowest frequency
+
+#Distribution of cancer types by age groups(plot)\
+ggplot(plot_data, aes(x = reorder(Subtype_histological, n), y = n, fill = age_cat )) +
+  geom_bar(stat = "identity", position = "dodge") +  # Use identity since we're supplying pre-counted data
+  coord_flip() +  # Flips the axes for a horizontal bar chart
+  geom_text(aes(label = n), position = position_dodge(width = 0.9), hjust = -0.2) +  # Add frequency labels
+  ylim(0,100) +
+  labs(
+    title = "Breast cancer subtypes by age group",
+    fill = "Age group",
+    y = "Number of participants",
+    x = "Breast cancer subtype"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 10)  # Customize y-axis text size
+  )
+
+
+# ggplot(clean_data, aes(x = Subtype_histological, fill = age_cat)) +
+#   geom_bar(position = "dodge") +
+#   labs(title = "Breast cancer subtypes by age category", x = "Cancer Type", y = "Count") +
+#   coord_flip()+
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+# Bivariate association with cancer subtype
+Checking for associations Between  Cancer Sub-types and factors
+
+```{r convert_to_factors_and_numeric, echo = FALSE , include = FALSE, warning=FALSE, message=FALSE, fig.height= 4, fig.width = 8}
+# Convert categorical variables to factors
+clean_data <- clean_data %>%
+  mutate(
+    Subtype_histological = as.factor(Subtype_histological),
+    Gender = as.factor(Gender),
+    Religion = as.factor(Religion),
+    Occupation = as.factor(Occupation),
+    Marital.Status = as.factor(Marital.Status),
+    age_cat = as.factor(age_cat),
+    BMI_cat = as.factor(BMI_cat),
+    ER = as.factor(ER),
+    PR = as.factor(PR),
+    HER2 = as.factor(HER2),
+    Ki67_cat = as.factor(Ki67_cat),
+    SBP.mmHg. = as.numeric(SBP.mmHg.),  
+    DBP.mmHg. = as.numeric(DBP.mmHg.)
+  )
+```
+
+
+
+## Bivariate association between Demographic Variables and cancer subtypes
+```{r cross_tabs_subtype_with_demo, echo = FALSE , include = TRUE, warning=FALSE, message=FALSE}
+# Load stringi for encoding check
+library(stringi)
+
+# Check which columns contain invalid UTF-8
+invalid_columns <- sapply(clean_data, function(x) {
+  if (is.character(x)) {
+    any(!stri_enc_isutf8(x))
+  } else {
+    FALSE
+  }
+})
+
+print(names(invalid_columns[invalid_columns]))
+
+
+clean_data <- clean_data %>%
+  mutate(
+    across(where(is.factor()), ~ iconv(., from = "", to = "UTF-8", sub = "byte")),
+    across(where(is.character), ~ iconv(., from = "", to = "UTF-8", sub = "byte")))
+
+# Plot a gtsummary table
+cancer_demographic_table <- clean_data %>%
+  select(Subtype_histological, AGE, age_cat, Gender, Religion, 
+         #Occupation, Marital.Status, BMI_cat
+         ) %>%
+  tbl_summary(
+    by = Subtype_histological, 
+    missing = "always",  
+    statistic = list(
+      all_continuous() ~ "{mean} [±{sd}]", 
+      all_categorical() ~ "{n}/{N} ({p}%)"
+      ),
+    digits = list(
+      all_categorical() ~ c(0,0,1),
+      all_continuous() ~ c(1,1)
+      ),
+    label = list(
+      AGE ~ "Age",
+      age_cat ~ "Age Category",
+      Gender ~ "Gender",
+      Religion ~ "Religion" #,
+      #Occupation ~ "Occupation",
+      #Marital.Status ~ "Marital Status",
+      #BMI_cat ~ "Body Mass Index Category"
+    )
+  ) 
+#%>%
+  add_overall() %>% 
+  add_p(test = list(
+    AGE ~ "t.test",                # A t-test is used for continuous var AGE
+    all_categorical() ~ "chisq.test" # A chi-square test is used for categorical variables
+  )) %>%
+  modify_spanning_header(c("stat_1", "stat_2", "stat_3", "stat_4") ~ "**Breast cancer subtype**") %>% 
+  modify_header(label = "**Variable**") %>%
+  bold_labels()
+
+# Print the table
+cancer_demographic_table
+```
+
+
+
+## Bivariate association between Clinical Variables and cancer subtypes
+```{r,cross_tabs_subtype_with_clinical, echo = FALSE , include = TRUE, warning=FALSE, message=FALSE}
+#Plot a gtsummary table (clinical vars)
+cancer_clinical_table <- clean_data %>%
+  select(Subtype_histological, ER, PR, HER2, SBP.mmHg., DBP.mmHg.,Ki67_cat) %>%
+  tbl_summary(
+    by = Subtype_histological, # Here we group by cancer subtype
+    missing = "always",  # Do not inlcude missing data into the table
+    statistic = list(
+      all_continuous() ~ "{mean} [±{sd}]", # Include (SD) for continuous variables
+      all_categorical() ~ "{n}/{N} ({p}%)"    # Include percentages for categorical variables
+      ),
+    digits = list(
+      all_categorical() ~ c(0,0,1),
+      all_continuous() ~ c(1,1)
+      ),
+    label = list(
+      ER ~ "Estrogen Receptor (ER)",
+      PR ~ "Progesterone Receptor (PR)",
+      HER2 ~ "HER2 Status",
+      SBP.mmHg. ~ "Systolic Blood Pressure (mmHg)",
+      DBP.mmHg. ~ "Diastolic Blood Pressure (mmHg)",
+      Ki67_cat ~ "Ki-67 Score"
+    )
+  ) %>%
+  add_overall() %>% 
+  add_p(test = list(
+    all_continuous() ~ "t.test",         # t-test is used for continuous vars
+    all_categorical() ~ "chisq.test"     # chi-square for categorical vars
+  )) %>%
+  modify_spanning_header(c("stat_1", "stat_2", "stat_3", "stat_4") ~ "**Breast cancer subtype**") %>% 
+  modify_header(label = "**Clinical Variable**") %>%
+  bold_labels()
+
+# Print the table
+cancer_clinical_table
+
+```
+
+
+
+```{r, categorize intrinsic factors, echo=FALSE, message=FALSE, warning=FALSE, include=TRUE}
+# Categorizing for intrinsic subtypes
+# Filter for complete cases
+#head(clean_data)
+complete_cases <- clean_data %>%
+  filter(!is.na(Ki67), !is.na(ER), !is.na(PR), !is.na(HER2))
+# Define cpmplete Ki67 cases based on the median
+median_Ki67 <- median(complete_cases$Ki67, na.rm = TRUE)
+
+intrinsic_factors <- complete_cases %>%
+  mutate(
+    Intrinsic_subtype = case_when(
+      ER == "Positive" & PR == "Positive" & HER2 == "Negative" & Ki67 < median_Ki67 ~ "Luminal A",
+      ER == "Positive" & PR == "Positive" & HER2 == "Negative" & Ki67 >= median_Ki67 ~ "Luminal B (HER2-negative)",
+      ER == "Positive" & HER2 == "Positive" ~ "Luminal B (HER2-positive)",
+      HER2 == "Positive" & ER == "Negative" & PR == "Negative" ~ "HER2-enriched",
+      ER == "Negative" & PR == "Negative" & HER2 == "Negative" ~ "Triple-negative (Basal-like)",
+      TRUE ~ "Unclassified"
+    )
+  )
+intrinsic_factors
+
+#View(intrinsic_factors)
+```
+
+
+
+```{r, association of intrinsic factors, warning=FALSE, message=FALSE, echo=FALSE, include=TRUE}
+# Generate summary table with association tests
+intrinsic_summary <- intrinsic_factors %>%
+  select(Intrinsic_subtype, age_cat, BMI_cat,Occupation, Treatmentplan, TreatmentIntent, Chemotherapyplanforthisvisit., Religion, HIVstatus, Surgicalprocedure, Subtype_histological, Cancer.stage) %>%
+  tbl_summary(
+    by = Intrinsic_subtype,
+    missing = "no",
+    statistic = list(all_continuous() ~ "{median} ({IQR})", all_categorical() ~ "{n} ({p}%)"),
+    label = list(
+      age_cat ~ "Age Group",
+      BMI_cat ~ "BMI Category",
+      Occupation~ "Occupation",
+      Treatmentplan ~ "Treatment Plan",
+      TreatmentIntent ~ "Treatment Intent",
+     Religion ~ "Religion",
+     HIVstatus ~ "HIV Status",
+     Surgicalprocedure ~ "Surgical Procedure",
+     Chemotherapyplanforthisvisit. ~ "Chemo Visit Plan",
+     Cancer.stage ~ "Cancer Stage",
+     Subtype_histological ~ "Histological Type"
+    )
+  ) %>%
+  add_p() %>%
+  add_overall() %>%
+  add_n()
+
+intrinsic_summary
+
+
+```
+
+
+```{r, intrinsic factors count, echo=FALSE, warning=FALSE, message=FALSE, include=TRUE}
+intrinsic_counts <- intrinsic_factors %>%
+  count(Intrinsic_subtype) %>%
+  arrange(desc(n))
+
+intrinsic_counts
+
+```
+
+
+```{r}
+# collapse the BMI and Occupation categories
+intrinsic_factors <- intrinsic_factors %>%
+  mutate(BMI_group = case_when(
+    BMI_cat %in% c("Underweight", "Normal weight") ~ "Underweight/Normal",
+    BMI_cat %in% c("Overweight", "Obese") ~ "Overweight/Obese",
+    TRUE ~ NA_character_
+  ))
+
+
+intrinsic_factors <- intrinsic_factors %>%
+  mutate(Occupation_collapsed = case_when(
+    Occupation %in% c("BusinessWoman", "Casualworker", "Farming", "Hairdresser", 
+                      "Revenuecollector", "Tailoring", "Teacher") ~ "Employed",
+    Occupation == "Unemployed" ~ "Unemployed",
+    TRUE ~ NA_character_
+  ))
+
+```
+
+
+
+```{r}
+
+## add in age_category to the explanatory vars 
+explanatory_vars = c("Religion", "Occupation_collapsed", "Marital.Status", "HIVstatus", "Cancer.stage", "age_cat", "BMI_group")
+
+## drop rows with missing information for variables of interest 
+intrinsic_factors <- intrinsic_factors %>% 
+  mutate(
+    HIVstatus.factor=ifelse(is.na(HIVstatus), "Not Available",HIVstatus),
+    HIVstatus.factor=factor(HIVstatus.factor,
+                     levels = c("Negative", "Positive", "Not Available"),
+                     labels = c("Negative", "Positive", "Not Available")),
+  
+    
+    Cancer.stage.factor=ifelse(is.na(Cancer.stage), "Not available/applicable", Cancer.stage),
+    Cancer.stage.factor=factor(Cancer.stage.factor,
+                        levels = c("Not available/applicable","Stage I", "Stage II", "Stage III", "Stage IV"),
+                        labels = c("Not available/applicable","Stage I", "Stage II", "Stage III", "Stage IV")),
+    BMI_group.factor=ifelse(is.na(BMI_group), 3, BMI_group),
+    BMI_group.factor=factor(BMI_group.factor,
+                   levels = c(1, 2, 3),
+                    labels = c("Underweight/Normal", "Overweight/Obese", "Not Available")),
+    Intrinsic_subtype_n = factor(Intrinsic_subtype, 
+                                 levels = c("Luminal A", "Luminal B (HER2-negative)", "Luminal B (HER2-positive)", "Triple-negative (Basal-like)", "HER2-enriched", "Unclassified"),
+                                 labels = c("Luminal A", "Luminal B (HER2-negative)", "Luminal B (HER2-positive)", "Triple-negative (Basal-like)", "HER2-enriched", "Unclassified")
+))
+
+```
+
+
+
+```{r}
+intrinsic_factors$Intrinsic_subtype_n <- relevel(intrinsic_factors$Intrinsic_subtype_n, ref = "Unclassified")
+
+
+mult_func <- function(data,outcome, variable, var_label = variable) {
+
+  # Fit model here
+  formula <- as.formula(paste0(outcome," ~ ",variable ))
+  model <- multinom(formula ,data = intrinsic_factors)
+
+  mod_sum <- summary(model)  # Model summary
+  coef_df <- t(as.data.frame(coef(model)))  # Model coefficient
+  se_df <- t(as.data.frame(summary(model)$standard.errors)) # Standard error
+  
+  colnames(se_df) <- paste0("se_", colnames(se_df))
+  combinedf <- cbind(coef_df, se_df)
+  combinedf <- as.data.frame(combinedf)
+
+  # Estiomate the odds ratio and confidence interval
+  combinedf <- combinedf %>% 
+    mutate(
+      lumA_or = exp(`Luminal A`),
+      lumA_lci = exp(`Luminal A` - 1.96*`se_Luminal A`),
+      lumA_uci = exp(`Luminal A` + 1.96*`se_Luminal A`),
+      
+      lumB_or = exp( `Luminal B (HER2-positive)`),
+      lumB_lci = exp( `Luminal B (HER2-positive)` - 1.96*`se_Luminal B (HER2-positive)`),
+      lumB_uci = exp( `Luminal B (HER2-positive)` + 1.96*`se_Luminal B (HER2-positive)`),
+      
+      Basal_or = exp( `Triple-negative (Basal-like)`),
+      Basal_lci = exp( `Triple-negative (Basal-like)` - 1.96*`se_Triple-negative (Basal-like)`),
+      Basal_uci = exp( `Triple-negative (Basal-like)` + 1.96*`se_Triple-negative (Basal-like)`),
+      
+      HER2_enriched_or = exp(`HER2-enriched`),
+      HER2_enriched_lci = exp(`HER2-enriched` - 1.96*`se_HER2-enriched`),
+      HER2_enriched_uci = exp(`HER2-enriched` + 1.96*`se_HER2-enriched`)
+    )
+
+  combinedf$variable = var_label
+  combinedf$category <- row.names(combinedf)
+
+  
+  # Generate a table for the odds ratio to be used for the forest plots
+  combine_df_or <- combinedf %>% 
+    dplyr::select(
+      variable, category,lumA_or, lumA_lci, lumA_uci, 
+      lumB_or,  lumB_lci,  lumB_uci, Basal_or, Basal_lci, Basal_uci, 
+      HER2_enriched_or, HER2_enriched_lci, HER2_enriched_uci
+      )
+
+  # Generate a table for the odds ratio to be used for the table output
+  combine_df_or_table <- combine_df_or %>% 
+    mutate(
+      lumA_est = sprintf("%.2f (%.2f,%.2f)",lumA_or, lumA_lci, lumA_uci),
+      lumB_est = sprintf("%.2f (%.2f,%.2f)",lumB_or,  lumB_lci,  lumB_uci),
+      Basal_est = sprintf("%.2f (%.2f,%.2f)", Basal_or, Basal_lci, Basal_uci),
+      HER2_est = sprintf("%.2f (%.2f,%.2f)",HER2_enriched_or, HER2_enriched_lci, HER2_enriched_uci)
+      ) %>% 
+    filter(category !="(Intercept)") %>% 
+    dplyr::select(variable, category,lumA_est,lumB_est, Basal_est, HER2_est )
+
+  # View(combine_df_or_table)
+
+  return(list(
+    Model = model,  # Main results
+    Model_Coefficients =  combinedf,   # Coefficient tables
+    Model_Odds = combine_df_or,   # Odds ration and CI for forest plot
+    Model_Table = combine_df_or_table  # Odds ratio and CI for table output
+  ))
+    
 }
 
-# View the first few rows of data
-#View(data_breast)
 
 ```
 
-```{r}
-# Removing duplicates 
-clean_data1 <- data_breast %>%
-  mutate(Occupation = ifelse(Occupation %in% c('student', 'Student'), 'Student', Occupation),
-         Occupation = ifelse(Occupation %in% c('Unemployed', 'unemployed'), 'Unemployed', Occupation))
 
-clean_data<- clean_data1 %>%
-  mutate(Surgicalprocedure = ifelse(Surgicalprocedure %in% c('MRMandALND', 'MRMandALND', 'MRM+ALND', 'MRMMandALND'), 'MRMandALND' , Surgicalprocedure))
+
+```{r}
+
+# Age model
+Age_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="age_cat",
+  var_label = "Age group" )
+
+## Age results results 
+Age_model$Model   # Pull the Age model results
+Age_model$Model_Table   # Pull the Age model results table
+Age_model$Model_Odds   # Pull the Age model results table
+
+
+
+
+# Cancer type results 
+Cancer_stage_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="Cancer.stage.factor",
+  var_label = "Cancer stage" )
+
+
+
+# HIVstatus results
+HIVstatus_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="HIVstatus.factor",
+  var_label = "HIVstatus" )
+
+# BMI_category results
+
+BMI_group_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="BMI_group.factor",
+  var_label = "BMI_cat" )
+
+
+
+# Occupation results
+Occupation_collapsed_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="Occupation_collapsed",
+  var_label = "Occupation_collapsed" )
+
+# Marital status results
+Marital.Status_model <- mult_func(
+  data=intrinsic_factors,
+  outcome = "Intrinsic_subtype_n",
+  variable ="Marital.Status",
+  var_label = "Marital.Status" )
+
+# Combine the results as dataframe
+Model_tables <- rbind(
+  Age_model$Model_Table,
+  Cancer_stage_model$Model_Table,
+  HIVstatus_model$Model_Table,
+  BMI_group_model$Model_Table,
+  Occupation_collapsed_model$Model_Table,
+  Marital.Status_model$Model_Table
+)
+
+autofit(flextable(Model_tables))
+
+
+
+# Combine the odd results as dataframe
+Forest_plot_df <- rbind(
+  Age_model$Model_Odds,
+  Cancer_stage_model$Model_Odds,
+ HIVstatus_model$Model_Odds,
+  BMI_group_model$Model_Odds,
+ Occupation_collapsed_model$Model_Odds,
+  Marital.Status_model$Model_Odds
+)
+
+
+autofit(flextable(Forest_plot_df))
+
+
+View(Forest_plot_df)
 ```
 
+
+
+
+
+
 ```{r}
-# Checking for the percentage of missingness in demographic variables
-# List the variables of interest 
-demo_list<- c("AGE", "Gender", "Religion", "Occupation", "Marital.Status")
-m1<- clean_data %>% dplyr:: select(all_of(demo_list))
-m1_plot <- plot_missing(m1, title = "Missingness in demographic variables")
+plot_each_subtype <- function(subtype_name) {
+  plot_data <- Forest_plot_df_clean %>%
+    filter(Subtype == subtype_name, pvalue < 0.05) %>%  # Keep only significant ones
+    mutate(pvalue_label = ifelse(pvalue < 0.001, "<0.001", sprintf("p = %.3f", pvalue)))
+  
+  ggplot(plot_data, aes(x = or, y = fct_rev(fct_inorder(nice_label)))) +
+    geom_point(color = "#1f77b4") +
+    geom_errorbarh(aes(xmin = lci, xmax = uci), height = 0.25, color = "#1f77b4") +
+    geom_vline(xintercept = 1, linetype = "dashed", color = "gray40") +
+    geom_text(aes(label = significance), hjust = -0.5, size = 3) +
+    geom_text(aes(x = Inf, label = pvalue_label), 
+              hjust = 1.1, size = 3, vjust = 0.5) +
+    annotate("text", x = Inf, y = Inf, label = "P-value", 
+             hjust = 1.1, vjust = -0.5, fontface = "bold", size = 3.5) +
+    scale_x_log10() +
+    coord_cartesian(clip = "off") +
+    labs(
+      title = paste("Forest Plot for", subtype_name),
+      subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+      x = "Odds Ratio (log scale)",
+      y = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      strip.text = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold"),
+      plot.margin = margin(0.5, 3, 0.5, 0.5, "cm")
+    )
+}
+
+
 ```
 
+
+
+
+
+
 ```{r}
-# Checking for missingness in Clinical variables
-clinic_list<- c("Cancertype", "ER", "PR", "Ki67", "HER2", "Subtype", "HIVstatus", "Treatmentplan", "TreatmentIntent", "TreatmentIntent")
-m2 <- clean_data %>% dplyr::select(all_of(clinic_list))
-m2_plot<- plot_missing(m2, title = "Missingness in clinical variables")
+# Prepare the Data
+Forest_plot_df_clean <- Forest_plot_df %>%
+  pivot_longer(cols = -c(variable, category), names_to = "measure", values_to = "value") %>%
+  separate(measure, into = c("Subtype", "stat"), sep = "_(?=[a-z]+$)") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  filter(category != "(Intercept)") %>%
+  filter(!is.infinite(or), or < 20) %>%
+  mutate(
+    Subtype = case_when(
+      Subtype == "lumA" ~ "Luminal A",
+      Subtype == "lumB" ~ "Luminal B",
+      Subtype == "HER2_enriched" ~ "HER2-enriched",
+      Subtype == "Basal" ~ "Triple-negative (Basal-like)",
+      TRUE ~ Subtype
+    ),
+    nice_label = case_when(
+      variable == "BMI_group.factor" & category == "Overweight/Obese" ~ "BMI: Overweight/Obese",
+      variable == "BMI_group.factor" & category == "Not Available" ~ "BMI: Not Available",
+      variable == "Occupation_collapsed" & category == "Unemployed" ~ "Occupation: Unemployed",
+      variable == "Cancer.stage.factor" ~ paste("Cancer Stage:", gsub("Cancer.stage.factor", "", category)),
+      variable == "HIVstatus.factor" & category == "Positive" ~ "HIV Status: Positive",
+      variable == "HIVstatus.factor" & category == "Not Available" ~ "HIV Status: Not Available",
+      variable == "Marital.Status" ~ paste("Marital Status:", gsub("Marital.Status", "", category)),
+      variable == "age_cat" & category == "age_cat40-60" ~ "Age: 40-60 years",
+      variable == "age_cat" & category == "age_cat>60" ~ "Age: >60 years",
+      TRUE ~ paste(variable, category, sep = ": ")
+    ),
+    z_stat = log(or) / ((log(uci) - log(lci)) / (2 * 1.96)),
+    pvalue = 2 * (1 - pnorm(abs(z_stat))),
+    significance = case_when(
+      pvalue < 0.001 ~ "***",
+      pvalue < 0.01 ~ "**", 
+      pvalue < 0.05 ~ "*",
+      TRUE ~ ""
+    ),
+    pvalue_label = case_when(
+      pvalue < 0.001 ~ "<0.001",
+      pvalue < 0.05 ~ sprintf("p = %.3f", pvalue),
+      TRUE ~ NA_character_  # Will exclude from plot
+    )
+  )
+
+# Plot function: keep all variables but only show p-values for significant ones
+plot_each_subtype <- function(subtype_name) {
+  plot_data <- Forest_plot_df_clean %>%
+    filter(Subtype == subtype_name)
+  
+  ggplot(plot_data, aes(x = or, y = fct_rev(fct_inorder(nice_label)))) +
+    geom_point(color = "#1f77b4") +
+    geom_errorbarh(aes(xmin = lci, xmax = uci), height = 0.25, color = "#1f77b4") +
+    geom_vline(xintercept = 1, linetype = "dashed", color = "gray40") +
+    geom_text(aes(label = significance), hjust = -0.5, size = 3) +
+    geom_text(aes(x = Inf, label = pvalue_label), 
+              hjust = 1.1, size = 3, vjust = 0.5, na.rm = TRUE) +
+    annotate("text", x = Inf, y = Inf, label = "P-value", 
+             hjust = 1.1, vjust = -0.5, fontface = "bold", size = 3.5) +
+    scale_x_log10() +
+    coord_cartesian(clip = "off") +
+    labs(
+      title = paste("Forest Plot for", subtype_name),
+      subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+      x = "Odds Ratio (log scale)",
+      y = NULL
+    ) +
+    theme_classic(base_size = 18) +
+    theme(
+      strip.text = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold"),
+      plot.margin = margin(0.5, 3, 0.5, 0.5, "cm")
+    )
+}
+
+# Create plots for each subtype
+plot_luminalA <- plot_each_subtype("Luminal A")
+plot_luminalB <- plot_each_subtype("Luminal B")
+plot_HER2_enriched <- plot_each_subtype("HER2-enriched")
+plot_basal <- plot_each_subtype("Triple-negative (Basal-like)")
+
+# Display the plots
+print(plot_luminalA)
+print(plot_luminalB)
+print(plot_HER2_enriched)
+print(plot_basal)
+
+
+
+# Save plots
+ggsave("ForestPlot_LuminalA.png", plot_luminalA, width = 8, height = 6)
+ggsave("ForestPlot_LuminalB.png", plot_luminalB, width = 8, height = 6)
+ggsave("ForestPlot_HER2_enriched.png", plot_HER2_enriched, width = 8, height = 6)
+ggsave("ForestPlot_Basal.png", plot_basal, width = 8, height = 6)
 ```
 
-```{r}
-# Creating a barchart of the subtypes
-ggplot(data = clean_data, aes(x = Subtype)) +
-  geom_bar(fill = "steelblue") +
-  labs(title = "Distribution of Cancer Subtypes",
-       x = "Cancer Subtype",
-       y = "Count") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-```
 
 ```{r}
-# Relationship between Age and Cancer Subtype
-age_subtype_summary <- clean_data %>%
-  group_by(Subtype) %>%
-  summarize(Age_Mean = mean(AGE, na.rm = TRUE), Age_SD = sd(AGE, na.rm = TRUE))
-print(kable(age_subtype_summary, caption = "Age by Cancer Subtype"))
+library(scales)
+intrinsic_factors$AGE <- as.numeric(as.character(intrinsic_factors$AGE))
 
-ggplot(clean_data, aes(x = Subtype, y = AGE, fill = Subtype)) +
-  geom_boxplot() +
-  labs(title = "Age Distribution by Cancer Subtype", x = "Cancer Subtype", y = "Age") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# Create short subtype labels
+intrinsic_factors <- intrinsic_factors %>%
+  mutate(Intrinsic_subtype_short = case_when(
+    Intrinsic_subtype == "Luminal A" ~ "Lum A",
+    Intrinsic_subtype == "Luminal B (HER2-negative)" ~ "Lum B-",
+    Intrinsic_subtype == "Luminal B (HER2-positive)" ~ "Lum B+",
+    Intrinsic_subtype == "HER2-enriched" ~ "HER2",
+    Intrinsic_subtype == "Triple-negative (Basal-like)" ~ "Basal",
+    Intrinsic_subtype == "Unclassified" ~ "Unclass"
+  ))
+
+# Plot 1: Histogram of Age
+p1 <- ggplot(intrinsic_factors, aes(x = AGE)) +
+  geom_histogram(binwidth = 5, fill = "#2c7fb8", color = "black") +
+  labs(title = "Age Distribution", x = "AGE", y = "Count") +
+  theme_classic()
+
+
+# Ensure NA values are represented as a separate category in the plot
+intrinsic_factors <- intrinsic_factors %>%
+  mutate(BMI_group_display = ifelse(is.na(BMI_group), "NAs", BMI_group)) %>%
+  mutate(BMI_group_display = factor(BMI_group_display,
+                                    levels = c("Underweight/Normal", "Overweight/Obese", "NAs")))
+
+# Plot A: BMI group — vertical stacked bar (proportions)
+p2 <- ggplot(intrinsic_factors, aes(x = Intrinsic_subtype_short, fill = BMI_group_display)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = c("#66c2a5", "#fc8d62", "gray80")) +
+  labs(
+    title = "A. BMI Group Proportions",
+    x = "Intrinsic Subtype",
+    y = "Proportion",
+    fill = "BMI Group"
+  ) +
+  theme_classic()
+
+# Print the plot
+p2
+
+
+
+# Plot 3: Occupation — changed from dot plot to bar plot
+p3 <- intrinsic_factors %>%
+  count(Intrinsic_subtype_short, Occupation_collapsed) %>%
+  ggplot(aes(x = Intrinsic_subtype_short, y = n, fill = Occupation_collapsed)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Employed" = "#E41A1C", "Unemployed" = "#377EB8", "NA" = "gray")) +
+  labs(title = "Occupation vs Subtype", x = "Intrinsic Subtype", y = "Count", fill = "Occupation") +
+  theme_classic()
+
+# Plot 4: Marital Status — Heatmap with NA in gray
+p4 <- intrinsic_factors %>%
+  count(Intrinsic_subtype_short, Marital.Status) %>%
+  ggplot(aes(x = Intrinsic_subtype_short, y = n, fill = Marital.Status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Married" = "lightgreen", "Single" = "#377EB8", "Seperated" = "skyblue", "Divorced" = "red", "Widow" = "black", "NA" = "gray")) +
+  labs(title = "Marital Status vs Subtype", x = "Intrinsic Subtype", y = "Count", fill = "Marital Status") +
+  theme_classic()
+
+# Plot 5: Cancer Stage — Stacked bar
+p5 <- ggplot(intrinsic_factors, aes(x = Intrinsic_subtype_short, fill = Cancer.stage.factor)) +
+  geom_bar(position = "stack") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(title = "Cancer Stage Distribution", x = "Intrinsic Subtype", y = "Count", fill = "Cancer Stage") +
+  theme_classic()
+
+# Plot 6: HIV Status — vertical grouped bar
+p6 <- ggplot(intrinsic_factors, aes(x = Intrinsic_subtype_short, fill = HIVstatus.factor)) +
+  geom_bar(position = "dodge") +
+  scale_fill_manual(values = c("Negative" = "#1b9e77", "Positive" = "#d95f02", "Not Available" = "#7570b3")) +
+  labs(title = "HIV Status by Subtype", x = "Intrinsic Subtype", y = "Count", fill = "HIV Status") +
+  theme_classic()
+
+# Combine plots
+final_plot <- (p1 | p2 | p3) / (p4 | p5 | p6) + plot_annotation(tag_levels = 'A')
+
+
+# Save to PNG
+ggsave("intrinsic_distribution.png", final_plot, width = 16, height = 12, dpi = 300)
 ```
